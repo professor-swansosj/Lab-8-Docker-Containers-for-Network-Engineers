@@ -1,0 +1,280 @@
+title: "Lab 8 — Docker Containers for Network Engineers"
+course: "Software Defined Networking"
+module: "Network Automation Fundamentals"
+lab_number: 8
+time_estimate: "120–150 minutes"
+
+objectives:
+  - "Run a first Docker container (hello-world) to validate the local Docker environment."
+  - "Explain the difference between Docker images and containers."
+  - "Create a Dockerfile and build a custom image for a FastAPI app."
+  - "Containerize a FastAPI application with multiple endpoints (ASCII art, external APIs, backup)."
+  - "Integrate Ansible inside the container to back up a network device."
+  - "Test containerized endpoints with cURL and save responses."
+  - "Tag, run, inspect, and manage container lifecycle operations."
+  - "Produce logs and artifacts for autograding."
+
+python_version: "3.11"
+accounts: ["GitHub"]
+devices:
+  - "Local machine with Docker (Desktop/Engine)"
+  - "Cisco DevNet Always-On Sandbox (for backup endpoint)"
+
+overview: >
+  You’ll shift from *using* dev containers to actually *building* and running your own
+  Docker images. First validate Docker with hello-world, then package a FastAPI app that
+  exposes endpoints for ASCII art, calling public APIs, and triggering a network backup
+  via Ansible. You’ll test with cURL, save artifacts, tag images, and exercise container
+  lifecycle commands end-to-end.
+
+before_you_begin: >
+  This lab runs **natively on your host** (not inside a dev container). Ensure Docker is
+  installed and the daemon is running. Create `logs/`, `data/api_responses/`, and `docs/`
+  if they don’t exist.
+
+resources:
+  - { title: "Docker Documentation", url: "https://docs.docker.com/" }
+  - { title: "FastAPI", url: "https://fastapi.tiangolo.com/" }
+  - { title: "Uvicorn", url: "https://www.uvicorn.org/" }
+  - { title: "Requests (Python)", url: "https://requests.readthedocs.io/en/latest/" }
+  - { title: "Ansible", url: "https://docs.ansible.com/" }
+  - { title: "pyfiglet", url: "https://pypi.org/project/pyfiglet/" }
+  - { title: "Dad Jokes API", url: "https://icanhazdadjoke.com/api", note: "Use Accept: application/json" }
+  - { title: "Deck of Cards API", url: "https://deckofcardsapi.com/" }
+  - { title: "Cisco DevNet Sandboxes", url: "https://developer.cisco.com/site/sandbox/" }
+
+faq:
+  - q: "Docker says it cannot connect to the daemon."
+    a: "Start Docker Desktop (or `sudo systemctl start docker` on Linux) and re-run."
+  - q: "Container runs but endpoints 500."
+    a: "Check container logs (`docker logs <name>`), confirm imports and network access."
+  - q: "Backup endpoint fails."
+    a: "Verify inventory credentials and connectivity to DevNet sandbox; ensure Ansible is installed in the image."
+
+deliverables:
+  readme_summary: "Standard README explaining Docker basics, goals, grading, and tips."
+  instructions_summary: "Stepwise INSTRUCTIONS covering hello-world, FastAPI, Dockerfile, build/run/test, Ansible integration, docs, and lifecycle."
+  files:
+    docker:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "requirements.txt"
+    app:
+      - "app/main.py"
+      - "app/reverse_api.py"
+      - "app/ansible_backup.py"
+    ansible:
+      - "ansible/backup-playbook.yml"
+      - "ansible/inventory.yml"
+    data:
+      - "data/api_responses/health.json"
+      - "data/api_responses/ascii.json"
+      - "data/api_responses/joke.json"
+      - "data/api_responses/card.json"
+      - "data/api_responses/backup.json"
+      - "data/container_logs.txt"
+    docs:
+      - "docs/container_usage.md"
+      - "docs/api_endpoints.md"
+    logs:
+      - "logs/lab8_docker.log"
+      - "logs/build_output.log"
+
+grading:
+  total_points: 100
+  rows:
+    - { step: "1", requirement: "Docker installation verified", points: 5 }
+    - { step: "2", requirement: "hello-world container runs and is logged", points: 5 }
+    - { step: "3", requirement: "FastAPI app created with required endpoints", points: 15 }
+    - { step: "4", requirement: "Ansible backup integration working", points: 15 }
+    - { step: "5", requirement: "Dockerfile follows best practices", points: 10 }
+    - { step: "6", requirement: "Image build completes; output saved", points: 10 }
+    - { step: "7", requirement: "Container runs; all endpoints tested via cURL", points: 20 }
+    - { step: "8", requirement: "Documentation created (usage + API)", points: 10 }
+    - { step: "9", requirement: "Lifecycle ops demonstrated (inspect/stop/start/remove)", points: 5 }
+    - { step: "10", requirement: "All required logs and final submission", points: 5 }
+
+tips:
+  - title: "Docker not running"
+    symptom: "Cannot connect to Docker daemon"
+    fix: "Start Docker Desktop or `sudo systemctl start docker` (Linux)."
+  - title: "Port already in use"
+    symptom: "Port 8000 is allocated"
+    fix: "Use `-p 8001:8000` or free the port."
+  - title: "Large image size"
+    symptom: "Image is several GB"
+    fix: "Use slim base images, `.dockerignore`, and pin packages."
+  - title: "Permissions in container"
+    symptom: "Cannot write logs"
+    fix: "Ensure directories exist and consider user permissions; create `logs/` in image."
+
+autograder:
+  log_path: "logs/*.log"
+  required_markers:
+    - "LAB8_START"
+    - "DOCKER_HELLO_OK"
+    - "FASTAPI_APP_CREATED"
+    - "ANSIBLE_INTEGRATION_OK"
+    - "DOCKERFILE_CREATED"
+    - "IMAGE_BUILD_OK"
+    - "CONTAINER_RUN_OK"
+    - "API_TEST_OK"
+    - "DOCUMENTATION_CREATED"
+    - "VERSION_TAGGED"
+    - "CONTAINER_LIFECYCLE_OK"
+    - "LAB8_END"
+
+submission_checklist:
+  - "hello-world runs and is logged."
+  - "FastAPI app exposes /, /ascii/{text}, /joke, /card, and /backup."
+  - "Dockerfile builds image without errors; build logs saved."
+  - "Container runs on port 8000; endpoint responses saved under `data/api_responses/`."
+  - "Ansible backup endpoint functions; inventory/playbook present."
+  - "Docs created under `docs/`."
+  - "All required markers present in `logs/lab8_docker.log`."
+
+steps:
+  - title: "Setup local Docker"
+    goal: "Verify Docker is ready and initialize repo structure."
+    actions: |
+      ```bash
+      docker --version
+      docker info
+      git clone <repo-url> && cd <repo-name>
+      mkdir -p app ansible data/api_responses docs logs
+      ```
+      Add this logging helper at the top of `app/main.py`:
+      ```python
+      from datetime import datetime, timezone
+      import os
+      def now_iso(): return datetime.now(timezone.utc).isoformat().replace("+00:00","Z")
+      def log(line, path):
+          os.makedirs(os.path.dirname(path), exist_ok=True)
+          with open(path,"a",encoding="utf-8") as f: f.write(f"{line}\n")
+      # example: log(f"LAB8_START ts={now_iso()}", "logs/lab8_docker.log")
+      ```
+    done_when: |
+      - `docker --version` and `docker info` succeed.
+      - `logs/lab8_docker.log` contains a start timestamp.
+    log_marker: "LAB8_START"
+
+  - title: "Run hello-world"
+    goal: "Validate pull/run and local cache."
+    actions: |
+      ```bash
+      docker run hello-world
+      docker ps -a
+      docker images
+      ```
+    done_when: |
+      - Terminal prints "Hello from Docker!"
+      - Image and container are visible via CLI.
+    log_marker: "DOCKER_HELLO_OK"
+
+  - title: "Build the FastAPI app"
+    goal: "Create endpoints and supporting modules."
+    actions: |
+      Create `requirements.txt`:
+      ```text
+      fastapi==0.104.1
+      uvicorn[standard]==0.24.0
+      requests==2.31.0
+      pyfiglet==1.0.2
+      ansible==8.5.0
+      ```
+      Create `app/main.py` with at least:
+      - `GET /` (health),
+      - `GET /ascii/{text}`,
+      - `GET /joke`,
+      - `GET /card`,
+      - `POST /backup` (calls Ansible).
+      Add `app/reverse_api.py` and `app/ansible_backup.py` as helpers.
+      Test locally (optional): `uvicorn app.main:app --reload`.
+    done_when: "Local run works; endpoints are defined."
+    log_marker: "FASTAPI_APP_CREATED"
+
+  - title: "Integrate Ansible backup"
+    goal: "Add device backup via Ansible playbook."
+    actions: |
+      Create `ansible/backup-playbook.yml` and `ansible/inventory.yml` for the DevNet sandbox.
+      In `app/ansible_backup.py`, run `ansible-playbook` as a subprocess from `/app`.
+    done_when: "Backup endpoint triggers playbook and reports status."
+    log_marker: "ANSIBLE_INTEGRATION_OK"
+
+  - title: "Write Dockerfile and dockerignore"
+    goal: "Define image build."
+    actions: |
+      Create `Dockerfile` (python:3.11-slim, install deps, copy app/ and ansible/, create dirs, expose 8000, run uvicorn).
+      Create `.dockerignore` to keep image lean.
+    done_when: "Files exist and are syntactically valid."
+    log_marker: "DOCKERFILE_CREATED"
+
+  - title: "Build the image"
+    goal: "Produce a tagged image and save build output."
+    actions: |
+      ```bash
+      docker build -t network-automation-api:v1.0 . > logs/build_output.log 2>&1
+      docker images | grep network-automation-api
+      docker history network-automation-api:v1.0
+      docker inspect network-automation-api:v1.0 | wc -l
+      ```
+    done_when: "Image builds successfully; logs captured."
+    log_marker: "IMAGE_BUILD_OK"
+
+  - title: "Run and test"
+    goal: "Launch container and verify endpoints."
+    actions: |
+      ```bash
+      docker run -d -p 8000:8000 --name network-api network-automation-api:v1.0
+      docker ps
+      docker logs network-api > data/container_logs.txt
+      # cURL tests
+      curl http://localhost:8000/ > data/api_responses/health.json
+      curl http://localhost:8000/ascii/Automation > data/api_responses/ascii.json
+      curl http://localhost:8000/joke > data/api_responses/joke.json
+      curl http://localhost:8000/card > data/api_responses/card.json
+      curl -X POST http://localhost:8000/backup > data/api_responses/backup.json
+      ```
+    done_when: "All endpoints return 200 and responses are saved."
+    log_marker: "CONTAINER_RUN_OK, API_TEST_OK"
+
+  - title: "Docs and versioning"
+    goal: "Document usage and tag versions."
+    actions: |
+      Create `docs/container_usage.md` and `docs/api_endpoints.md` with build/run and cURL examples.
+      Tag the image:
+      ```bash
+      docker tag network-automation-api:v1.0 network-automation-api:latest
+      docker images network-automation-api
+      ```
+    done_when: "Docs exist; image shows v1.0 and latest."
+    log_marker: "DOCUMENTATION_CREATED, VERSION_TAGGED"
+
+  - title: "Lifecycle & troubleshooting"
+    goal: "Operate container confidently."
+    actions: |
+      ```bash
+      docker inspect network-api | head -n 20
+      docker stats network-api --no-stream
+      docker stop network-api && docker start network-api
+      docker rm -f network-api
+      docker rmi network-automation-api:v1.0
+      ```
+    done_when: "Inspect/stop/start/remove succeed without errors."
+    log_marker: "CONTAINER_LIFECYCLE_OK"
+
+  - title: "Commit, push, finalize"
+    goal: "Submit with complete artifacts and logs."
+    actions: |
+      Ensure logs include all required markers; commit and push:
+      ```bash
+      git add .
+      git commit -m "Lab 8 complete: Dockerized FastAPI + Ansible backup"
+      git push
+      ```
+      Add a final log line.
+    done_when: "PR opens and Verify Docs is green."
+    log_marker: "LAB8_END"
+
+license: "© 2025 Your Name — Classroom use."
+
