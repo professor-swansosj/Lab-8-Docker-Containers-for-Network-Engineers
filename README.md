@@ -83,3 +83,5 @@ You’ll shift from *using* dev containers to actually *building* and running yo
 
 ## License
 © 2025 Your Name — Classroom use.
+
+# HAPPY CODING!
