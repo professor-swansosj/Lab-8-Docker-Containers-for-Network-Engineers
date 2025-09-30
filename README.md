@@ -85,3 +85,5 @@ You’ll shift from *using* dev containers to actually *building* and running yo
 © 2025 Your Name — Classroom use.
 
 # HAPPY CODING!
+
+**Sincerely, Professor Swanson**
