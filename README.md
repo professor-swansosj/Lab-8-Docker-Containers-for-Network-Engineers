@@ -4,86 +4,132 @@
 **Module:** Network Automation Fundamentals • **Lab #:** 8  
 **Estimated Time:** 120–150 minutes
 
-## Objectives
-- Run a first Docker container (hello-world) to validate the local Docker environment.
-- Explain the difference between Docker images and containers.
-- Create a Dockerfile and build a custom image for a FastAPI app.
-- Containerize a FastAPI application with multiple endpoints (ASCII art, external APIs, backup).
-- Integrate Ansible inside the container to back up a network device.
-- Test containerized endpoints with cURL and save responses.
-- Tag, run, inspect, and manage container lifecycle operations.
-- Produce logs and artifacts for autograding.
+## Repository structure
 
-## Prerequisites
-- Python 3.11 (via the provided dev container)
-- Accounts: GitHub
-- Devices/Sandboxes: Local machine with Docker (Desktop/Engine), Cisco DevNet Always-On Sandbox (for backup endpoint)
-
-## Overview
-You’ll shift from *using* dev containers to actually *building* and running your own Docker images. First validate Docker with hello-world, then package a FastAPI app that exposes endpoints for ASCII art, calling public APIs, and triggering a network backup via Ansible. You’ll test with cURL, save artifacts, tag images, and exercise container lifecycle commands end-to-end.
-
-
-## Resources
-- [Docker Documentation](https://docs.docker.com/)- [FastAPI](https://fastapi.tiangolo.com/)- [Uvicorn](https://www.uvicorn.org/)- [Requests (Python)](https://requests.readthedocs.io/en/latest/)- [Ansible](https://docs.ansible.com/)- [pyfiglet](https://pypi.org/project/pyfiglet/)- [Dad Jokes API](https://icanhazdadjoke.com/api) — Use Accept: application/json- [Deck of Cards API](https://deckofcardsapi.com/)- [Cisco DevNet Sandboxes](https://developer.cisco.com/site/sandbox/)
-
-## FAQ
-**Q:** Docker says it cannot connect to the daemon.  
-**A:** Start Docker Desktop (or `sudo systemctl start docker` on Linux) and re-run.
-
-**Q:** Container runs but endpoints 500.  
-**A:** Check container logs (`docker logs <name>`), confirm imports and network access.
-
-**Q:** Backup endpoint fails.  
-**A:** Verify inventory credentials and connectivity to DevNet sandbox; ensure Ansible is installed in the image.
+```text
+Lab-8-Docker-Containers-for-Network-Engineers
+├── .devcontainer
+│   └── devcontainer.json
+├── .gitignore
+├── .markdownlint.json
+├── .markdownlintignore
+├── .pettierrc.yml
+├── INSTRUCTIONS.backup.md
+├── INSTRUCTIONS.md
+├── LICENSE
+├── README.backup.md
+├── README.md
+├── data
+│   └── inventory.example.yml
+├── lab.yml
+├── prettierrc.yml
+├── requirements.txt
+└── src
+    ├── __init__.py
+    └── main.py
+```
 
 
+## Lab Topics
 
-## Deliverables
-- Standard README explaining Docker basics, goals, grading, and tips.
-- Stepwise INSTRUCTIONS covering hello-world, FastAPI, Dockerfile, build/run/test, Ansible integration, docs, and lifecycle.
-- Grading: **100 points**
+### What is a Docker Container?
+A Docker container is a lightweight, portable, and self-sufficient unit that encapsulates an application and all its dependencies, libraries, and configuration files. Containers are built from Docker images, which serve as the blueprint for the container's filesystem and environment.
 
-## Grading Breakdown
-| Step | Requirement | Points |
-|---|---|---|
-| 1 | Docker installation verified | 5 |
-| 2 | hello-world container runs and is logged | 5 |
-| 3 | FastAPI app created with required endpoints | 15 |
-| 4 | Ansible backup integration working | 15 |
-| 5 | Dockerfile follows best practices | 10 |
-| 6 | Image build completes; output saved | 10 |
-| 7 | Container runs; all endpoints tested via cURL | 20 |
-| 8 | Documentation created (usage + API) | 10 |
-| 9 | Lifecycle ops demonstrated (inspect/stop/start/remove) | 5 |
-| 10 | All required logs and final submission | 5 |
-| **Total** |  | **100** |
+Key characteristics of Docker containers include:
+- **Isolation**: Containers run in their own isolated environments, ensuring that applications do not interfere with each other.
+- **Portability**: Containers can run consistently across different environments, such as development, testing, and production.
+- **Efficiency**: Containers share the host system's kernel, making them more lightweight and faster to start than traditional virtual machines.
 
-## 🔧 Troubleshooting & Pro Tips
-**Docker not running**  
-*Symptom:* Cannot connect to Docker daemon  
-*Fix:* Start Docker Desktop or `sudo systemctl start docker` (Linux).
-
-**Port already in use**  
-*Symptom:* Port 8000 is allocated  
-*Fix:* Use `-p 8001:8000` or free the port.
-
-**Large image size**  
-*Symptom:* Image is several GB  
-*Fix:* Use slim base images, `.dockerignore`, and pin packages.
-
-**Permissions in container**  
-*Symptom:* Cannot write logs  
-*Fix:* Ensure directories exist and consider user permissions; create `logs/` in image.
+In our last lab, we explored the basics of Docker and containerization. In this lab, we will dive deeper into building and running Docker containers for network engineering tasks. Below is a simple example of how to use Docker to run a container.
 
 
+```bash
+docker run hello-world
 
-## Autograder Notes
-- Log file: `logs/*.log`
-- Required markers: `LAB8_START`, `DOCKER_HELLO_OK`, `FASTAPI_APP_CREATED`, `ANSIBLE_INTEGRATION_OK`, `DOCKERFILE_CREATED`, `IMAGE_BUILD_OK`, `CONTAINER_RUN_OK`, `API_TEST_OK`, `DOCUMENTATION_CREATED`, `VERSION_TAGGED`, `CONTAINER_LIFECYCLE_OK`, `LAB8_END`
+```
+
+### Containers vs Virtual Machines
+While both containers and virtual machines (VMs) provide isolated environments for running applications, they do so in fundamentally different ways.
+
+**Virtual Machines**:
+- VMs run a full operating system (OS) on top of a hypervisor, which abstracts the underlying hardware.
+- Each VM includes its own OS kernel, libraries, and applications, leading to larger resource consumption.
+- VMs are typically slower to start and require more disk space.
+
+**Containers**:
+- Containers share the host OS kernel and isolate applications at the process level.
+- They package only the application and its dependencies, making them more lightweight and efficient.
+- Containers start quickly and use less disk space compared to VMs.
+
+
+### Containers in Network Engineering
+Containers have become increasingly popular in network engineering for several reasons:
+- **Automation**: Containers can be easily integrated into CI/CD pipelines, enabling automated testing and deployment of network applications.
+- **Scalability**: Containers can be quickly scaled up or down to meet changing network demands.
+- **Consistency**: Containers ensure that applications run consistently across different environments, reducing the "it works on my machine" problem.
+- **Microservices**: Containers facilitate the development and deployment of microservices architectures, allowing network functions to be broken down into smaller, manageable components.
+
+In this lab, we will explore how to leverage Docker containers to build a FastAPI application that interacts with network devices using Ansible.
+
+
+### The Dockerfile
+A Dockerfile is a text file that contains a series of instructions for building a Docker image. It defines the base image, application code, dependencies, environment variables, and commands to run when the container starts.
+
+Here is a simple example of a Dockerfile for a FastAPI application:
+
+
+```dockerfile
+# Use the official Python image as a base
+FROM python:3.11
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the application code
+COPY . .
+
+# Install dependencies
+RUN pip install -r requirements.txt
+
+# Expose the application port
+EXPOSE 8000
+
+# Start the FastAPI application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+```
+
+### Understanding Containers and Images
+In summary, Docker containers are lightweight, portable units that encapsulate applications and their dependencies. They differ from virtual machines in their architecture and resource efficiency. Containers are widely used in network engineering for automation, scalability, and consistency.
+
+The Dockerfile is a crucial component in the containerization process, as it defines how to build a Docker image. By following best practices in writing Dockerfiles, we can create efficient and maintainable images for our applications.
+
+In the following sections of this lab, we will apply these concepts by building and running a Docker container for a FastAPI application that interacts with network devices using Ansible.
+
+
+### Managing your Containers and Images
+Once you have built and run your Docker containers, it's important to know how to manage them effectively. Here are some common commands for managing Docker containers and images:
+
+**Managing Containers**:
+- `docker ps`: List all running containers.
+- `docker ps -a`: List all containers (running and stopped).
+- `docker stop <container_id>`: Stop a running container.
+- `docker start <container_id>`: Start a stopped container.
+- `docker restart <container_id>`: Restart a container.
+- `docker rm <container_id>`: Remove a stopped container.
+- `docker logs <container_id>`: View the logs of a container.
+
+**Managing Images**:
+- `docker images`: List all Docker images on your system.
+- `docker rmi <image_id>`: Remove a Docker image.
+- `docker tag <image_id> <new_image_name>:<tag>`: Tag an image with a new name and tag.
+- `docker pull <image_name>`: Pull an image from Docker Hub or another registry.
+- `docker push <image_name>`: Push an image to Docker Hub or another registry.
+
+By mastering these commands, you can efficiently manage your Docker containers and images, ensuring that your development and deployment processes run smoothly.
+
+
+
 
 ## License
 © 2025 Your Name — Classroom use.
-
-# HAPPY CODING!
-
-**Sincerely, Professor Swanson**
