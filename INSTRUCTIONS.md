@@ -1,294 +1,279 @@
 # Instructions — Lab 8 — Docker Containers for Network Engineers
 
 ## Objectives
-- Run a first Docker container (hello-world) to validate the local Docker environment.
-- Explain the difference between Docker images and containers.
-- Create a Dockerfile and build a custom image for a FastAPI app.
-- Containerize a FastAPI application with multiple endpoints (ASCII art, external APIs, backup).
-- Integrate Ansible inside the container to back up a network device.
-- Test containerized endpoints with cURL and save responses.
-- Tag, run, inspect, and manage container lifecycle operations.
-- Produce logs and artifacts for autograding.
+- Author a Dockerfile to containerize a FastAPI webhook service.
+- Add a new FastAPI path that triggers an Ansible backup playbook.
+- Package required dependencies (FastAPI, Uvicorn, requests, Netmiko, ncclient, Ansible, collections).
+- Use environment variables and volumes for credentials and persistent artifacts.
+- Build, run, test, and log deterministic markers for autograding.
 
 ## Prerequisites
 - Python 3.11 (via the provided dev container)
-- Accounts: GitHub
-- Devices/Sandboxes: Local machine with Docker (Desktop/Engine), Cisco DevNet Always-On Sandbox (for backup endpoint)
+- Accounts: GitHub, Cisco DevNet
+- Devices/Sandboxes: Local Docker Engine, Cisco DevNet Always-On Catalyst 8k/9k (for backup target)
+- Technical: - FastAPI app from Lab 6 (webhooks working).
+- Basic Docker commands: build, run, logs, stop, rm.
+- Ansible basics (inventory, playbooks, collections).
+- GitHub Classroom workflow (clone, commit, push, PR).
 
 ## Overview
-You’ll shift from *using* dev containers to actually *building* and running your own Docker images. First validate Docker with hello-world, then package a FastAPI app that exposes endpoints for ASCII art, calling public APIs, and triggering a network backup via Ansible. You’ll test with cURL, save artifacts, tag images, and exercise container lifecycle commands end-to-end.
+You will containerize your FastAPI webhook service from Lab 6 and extend it with a new endpoint that, when called, runs an Ansible playbook to back up device configurations from the Catalyst 8k and 9k sandboxes. You will write a production-minded Dockerfile, install Python and Ansible dependencies, prepare an inventory and playbook in the image, and expose port 8000. Runtime environment variables provide credentials; a bind-mounted volume preserves backups and logs. You will build, run, and test the container, saving artifacts and log markers for autograding.
 
 
-> **Before you begin:** This lab runs **natively on your host** (not inside a dev container). Ensure Docker is installed and the daemon is running. Create `logs/`, `data/api_responses/`, and `docs/` if they don’t exist.
+> **Before you begin:** Verify Docker is installed and the Docker daemon is running (`docker version` works). Ensure you can write to `data/` and `logs/`. Have the IP/hostnames for the Cat8k and Cat9k sandboxes ready.
 
 
 ## Resources
-- [Docker Documentation](https://docs.docker.com/)- [FastAPI](https://fastapi.tiangolo.com/)- [Uvicorn](https://www.uvicorn.org/)- [Requests (Python)](https://requests.readthedocs.io/en/latest/)- [Ansible](https://docs.ansible.com/)- [pyfiglet](https://pypi.org/project/pyfiglet/)- [Dad Jokes API](https://icanhazdadjoke.com/api) — Use Accept: application/json- [Deck of Cards API](https://deckofcardsapi.com/)- [Cisco DevNet Sandboxes](https://developer.cisco.com/site/sandbox/)
+- [Dockerfile reference](https://docs.docker.com/engine/reference/builder/)- [FastAPI](https://fastapi.tiangolo.com/)- [Uvicorn](https://www.uvicorn.org/)- [Ansible docs](https://docs.ansible.com/)- [cisco.ios collection](https://docs.ansible.com/ansible/latest/collections/cisco/ios/)
 ## Deliverables
-- Standard README explaining Docker basics, goals, grading, and tips.
-- Stepwise INSTRUCTIONS covering hello-world, FastAPI, Dockerfile, build/run/test, Ansible integration, docs, and lifecycle.
-- Grading: **100 points**
+- `Dockerfile` that builds a runnable image for the FastAPI app.
+- `src/app.py` FastAPI webhook with a new POST path `/backup/ansible`.
+- Ansible artifacts inside repo: `playbooks/backup.yml`, `inventories/inventory.yml`, `requirements.yml`.
+- Build and run transcripts saved to `data/docker_build.txt` and `data/docker_run.txt`.
+- Backups saved under `data/backups/` (e.g., `cat8k_running_config.txt`, `cat9k_running_config.txt`).
+- `logs/lab8.log` with required markers.
+- Pull request open to `main` with all artifacts committed.
+- Grading: **75 points**
 
 Follow these steps in order.
 
-> **Logging Requirement:** Write progress to `logs/*.log` as you complete each step.
+> **Logging Requirement:** Write progress to `logs/lab8.log` as you complete each step.
 
-## Step 1 — Setup local Docker
-**Goal:** Verify Docker is ready and initialize repo structure.
+## Step 1 — Clone the Repository
+**Goal:** Get your starter locally.
 
 **What to do:**  
-```bash
-docker --version
-docker info
-git clone <repo-url> && cd <repo-name>
-mkdir -p app ansible data/api_responses docs logs
-```
-Add this logging helper at the top of `app/main.py`:
-```python
-from datetime import datetime, timezone
-import os
-def now_iso(): return datetime.now(timezone.utc).isoformat().replace("+00:00","Z")
-def log(line, path):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path,"a",encoding="utf-8") as f: f.write(f"{line}\n")
-# example: log(f"LAB8_START ts={now_iso()}", "logs/lab8_docker.log")
-```
+Clone your GitHub Classroom repo and `cd` into it. Create `src/`, `playbooks/`, `inventories/`,
+`data/backups/`, and `logs/` if missing.
+Initialize the lab log: `echo 'LAB8_START' >> logs/lab8.log`
 
 
-**You’re done when:**  
-- `docker --version` and `docker info` succeed.
-- `logs/lab8_docker.log` contains a start timestamp.
+**You're done when:**  
+- Folders exist and `LAB8_START` appears in `logs/lab8.log`.
 
 
 **Log marker to add:**  
 `[LAB8_START]`
 
-## Step 2 — Run hello-world
-**Goal:** Validate pull/run and local cache.
+## Step 2 — Dev Container Check (Optional)
+**Goal:** Confirm Python app still runs locally.
 
 **What to do:**  
-```bash
-docker run hello-world
-docker ps -a
-docker images
-```
+If using dev containers, reopen now and verify `python -c "import fastapi, uvicorn; print('OK')"` prints OK.
+Append `[STEP 2] Dev Container Started` to `logs/lab8.log` if you used it.
 
 
-**You’re done when:**  
-- Terminal prints "Hello from Docker!"
-- Image and container are visible via CLI.
+**You're done when:**  
+- Local run sanity-checked OR dev container confirmed.
 
 
 **Log marker to add:**  
-`[DOCKER_HELLO_OK]`
+`[[STEP 2] Dev Container Started]`
 
-## Step 3 — Build the FastAPI app
-**Goal:** Create endpoints and supporting modules.
+## Step 3 — Extend FastAPI App
+**Goal:** Add `/backup/ansible` POST endpoint.
 
 **What to do:**  
-Create `requirements.txt`:
-```text
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-requests==2.31.0
-pyfiglet==1.0.2
-ansible==8.5.0
-```
-Create `app/main.py` with at least:
-- `GET /` (health),
-- `GET /ascii/{text}`,
-- `GET /joke`,
-- `GET /card`,
-- `POST /backup` (calls Ansible).
-Add `app/reverse_api.py` and `app/ansible_backup.py` as helpers.
-Test locally (optional): `uvicorn app.main:app --reload`.
+In `src/app.py` (from Lab 6), add a new POST handler:
+  - Validates token (same `X-Webhook-Token` approach).
+  - Invokes an Ansible playbook (subprocess) to back up Cat8k and Cat9k running-configs.
+  - Writes backups to `data/backups/` and returns a JSON summary (hostnames + file paths).
+  - Logs `BACKUP_CALLED` and `BACKUP_FILES_SAVED`.
+Keep existing endpoints from Lab 6 working.
 
 
-**You’re done when:**  
-Local run works; endpoints are defined.
+**You're done when:**  
+- New endpoint implemented without breaking other paths.
+
 
 **Log marker to add:**  
-`[FASTAPI_APP_CREATED]`
+`[WEBHOOKS_OK]`
 
-## Step 4 — Integrate Ansible backup
-**Goal:** Add device backup via Ansible playbook.
+## Step 4 — Author the Ansible Playbook & Inventory
+**Goal:** Create portable IaC inside the container.
 
 **What to do:**  
-Create `ansible/backup-playbook.yml` and `ansible/inventory.yml` for the DevNet sandbox.
-In `app/ansible_backup.py`, run `ansible-playbook` as a subprocess from `/app`.
+Create:
+  - `requirements.yml` (include `cisco.ios` and `ansible.netcommon`).
+  - `inventories/inventory.yml` with hosts `cat8k` and `cat9k` (use env vars for creds; no secrets in repo).
+  - `playbooks/backup.yml` that:
+      * Runs against group `iosxe`
+      * Uses `cisco.ios.ios_command` (e.g., `show running-config`) or `cisco.ios.ios_config` with `backup: true`
+      * Registers output and writes files to `/app/data/backups/` (container path)
+Log `ANSIBLE_ASSETS_OK`.
 
 
-**You’re done when:**  
-Backup endpoint triggers playbook and reports status.
+**You're done when:**  
+- Inventory, requirements, and playbook validate (`ansible-playbook --syntax-check playbooks/backup.yml`).
+
 
 **Log marker to add:**  
-`[ANSIBLE_INTEGRATION_OK]`
+`[ANSIBLE_ASSETS_OK]`
 
-## Step 5 — Write Dockerfile and dockerignore
-**Goal:** Define image build.
+## Step 5 — Write the Dockerfile
+**Goal:** Containerize app + Ansible cleanly.
 
 **What to do:**  
-Create `Dockerfile` (python:3.11-slim, install deps, copy app/ and ansible/, create dirs, expose 8000, run uvicorn).
-Create `.dockerignore` to keep image lean.
+Create `Dockerfile` that:
+  - Uses a slim Python 3.11 base.
+  - Installs system deps needed by Ansible/SSH (e.g., `openssh-client`, `sshpass`, `git`).
+  - `pip install` Python deps (fastapi, uvicorn, requests, netmiko, ncclient, xmltodict, ansible, ansible-pylibssh).
+  - Copies `src/`, `playbooks/`, `inventories/`, `requirements.yml`, and `logs/` scaffold into `/app`.
+  - Runs `ansible-galaxy collection install -r /app/requirements.yml` at build time.
+  - Creates non-root user; sets `WORKDIR /app`.
+  - Exposes `8000` and adds a `HEALTHCHECK` hitting `/health` endpoint.
+  - `CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]`
+Log `DOCKERFILE_OK`.
 
 
-**You’re done when:**  
-Files exist and are syntactically valid.
+**You're done when:**  
+- Dockerfile passes `hadolint` (if available) and looks production-minded.
+
 
 **Log marker to add:**  
-`[DOCKERFILE_CREATED]`
+`[DOCKERFILE_OK]`
 
-## Step 6 — Build the image
-**Goal:** Produce a tagged image and save build output.
+## Step 6 — Build the Image
+**Goal:** Produce a tagged image.
 
 **What to do:**  
-```bash
-docker build -t network-automation-api:v1.0 . > logs/build_output.log 2>&1
-docker images | grep network-automation-api
-docker history network-automation-api:v1.0
-docker inspect network-automation-api:v1.0 | wc -l
-```
+Run: `docker build -t sdn-fastapi-backup:lab8 . | tee data/docker_build.txt`
+On success, append `BUILD_OK` to `logs/lab8.log`.
 
 
-**You’re done when:**  
-Image builds successfully; logs captured.
+**You're done when:**  
+- Image `sdn-fastapi-backup:lab8` exists; build transcript saved.
+
 
 **Log marker to add:**  
-`[IMAGE_BUILD_OK]`
+`[BUILD_OK]`
 
-## Step 7 — Run and test
-**Goal:** Launch container and verify endpoints.
+## Step 7 — Run the Container
+**Goal:** Start service with env + volume.
 
 **What to do:**  
-```bash
-docker run -d -p 8000:8000 --name network-api network-automation-api:v1.0
-docker ps
-docker logs network-api > data/container_logs.txt
-# cURL tests
-curl http://localhost:8000/ > data/api_responses/health.json
-curl http://localhost:8000/ascii/Automation > data/api_responses/ascii.json
-curl http://localhost:8000/joke > data/api_responses/joke.json
-curl http://localhost:8000/card > data/api_responses/card.json
-curl -X POST http://localhost:8000/backup > data/api_responses/backup.json
-```
+Run (example):
+  docker run -d --name sdn-lab8 \
+    -p 8000:8000 \
+    -e WEBHOOK_TOKEN=<your_token> \
+    -e ANSIBLE_USER=<sandbox_user> \
+    -e ANSIBLE_PASSWORD=<sandbox_pass> \
+    -e CAT8K_HOST=<ip_or_fqdn> \
+    -e CAT9K_HOST=<ip_or_fqdn> \
+    -v "$PWD/data:/app/data" \
+    sdn-fastapi-backup:lab8 | tee data/docker_run.txt
+Append `RUN_OK` to `logs/lab8.log`.
 
 
-**You’re done when:**  
-All endpoints return 200 and responses are saved.
+**You're done when:**  
+- Container is running and mapped to localhost:8000.
+
 
 **Log marker to add:**  
-`[CONTAINER_RUN_OK, API_TEST_OK]`
+`[RUN_OK]`
 
-## Step 8 — Docs and versioning
-**Goal:** Document usage and tag versions.
+## Step 8 — Health & Endpoint Tests
+**Goal:** Verify service is alive and endpoints respond.
 
 **What to do:**  
-Create `docs/container_usage.md` and `docs/api_endpoints.md` with build/run and cURL examples.
-Tag the image:
-```bash
-docker tag network-automation-api:v1.0 network-automation-api:latest
-docker images network-automation-api
-```
+Hit health (if implemented) and a simple endpoint (e.g., `/joke`) with the token:
+  curl -s -X POST http://localhost:8000/joke -H "X-Webhook-Token: <your_token>"
+Save brief test notes to `data/test_notes.txt`. Append `HEALTH_OK` to log.
 
 
-**You’re done when:**  
-Docs exist; image shows v1.0 and latest.
+**You're done when:**  
+- At least one non-backup endpoint returns 200.
+
 
 **Log marker to add:**  
-`[DOCUMENTATION_CREATED, VERSION_TAGGED]`
+`[HEALTH_OK]`
 
-## Step 9 — Lifecycle & troubleshooting
-**Goal:** Operate container confidently.
+## Step 9 — Trigger Ansible Backup
+**Goal:** Execute the new endpoint and persist artifacts.
 
 **What to do:**  
-```bash
-docker inspect network-api | head -n 20
-docker stats network-api --no-stream
-docker stop network-api && docker start network-api
-docker rm -f network-api
-docker rmi network-automation-api:v1.0
-```
+Call:
+  curl -s -X POST http://localhost:8000/backup/ansible \
+    -H "X-Webhook-Token: <your_token>" \
+    -H "Content-Type: application/json" \
+    -d '{"targets":["cat8k","cat9k"]}'
+Ensure output files appear in `data/backups/` and JSON response lists file paths.
+Append `BACKUP_OK` and `BACKUP_FILES_SAVED` to the log.
 
 
-**You’re done when:**  
-Inspect/stop/start/remove succeed without errors.
+**You're done when:**  
+- `data/backups/` contains both device backups with non-empty content.
+
 
 **Log marker to add:**  
-`[CONTAINER_LIFECYCLE_OK]`
+`[BACKUP_OK, BACKUP_FILES_SAVED]`
 
-## Step 10 — Commit, push, finalize
-**Goal:** Submit with complete artifacts and logs.
+## Step 10 — Finalize & Submit
+**Goal:** Stop, clean, and open PR.
 
 **What to do:**  
-Ensure logs include all required markers; commit and push:
-```bash
-git add .
-git commit -m "Lab 8 complete: Dockerized FastAPI + Ansible backup"
-git push
-```
-Add a final log line.
+Append `LAB8_END` to `logs/lab8.log`. Optionally stop/remove the container:
+  docker stop sdn-lab8 && docker rm sdn-lab8
+Commit and push all artifacts; open a PR targeting `main`.
 
 
-**You’re done when:**  
-PR opens and Verify Docs is green.
+**You're done when:**  
+- PR open; all required files present.
+
 
 **Log marker to add:**  
 `[LAB8_END]`
 
 
 ## FAQ
-**Q:** Docker says it cannot connect to the daemon.  
-**A:** Start Docker Desktop (or `sudo systemctl start docker` on Linux) and re-run.
+**Q:** Backups didn't appear under data/backups/  
+**A:** Check your `-v $PWD/data:/app/data` bind mount and ensure the playbook writes to `/app/data/backups/`.
 
-**Q:** Container runs but endpoints 500.  
-**A:** Check container logs (`docker logs <name>`), confirm imports and network access.
+**Q:** 401 Unauthorized on POST  
+**A:** Send the header `X-Webhook-Token: <token>`; ensure the container has `WEBHOOK_TOKEN` set.
 
-**Q:** Backup endpoint fails.  
-**A:** Verify inventory credentials and connectivity to DevNet sandbox; ensure Ansible is installed in the image.
+**Q:** Ansible authentication fails  
+**A:** Provide `ANSIBLE_USER` / `ANSIBLE_PASSWORD` env vars and correct `CAT8K_HOST` / `CAT9K_HOST`.
+
+**Q:** ncclient/Netmiko missing  
+**A:** Confirm they're installed in the image; rebuild after editing the Dockerfile.
 
 
 ## 🔧 Troubleshooting & Pro Tips
-**Docker not running**  
-*Symptom:* Cannot connect to Docker daemon  
-*Fix:* Start Docker Desktop or `sudo systemctl start docker` (Linux).
+**Keep secrets out of Git**  
+*Symptom:* Credentials leaked in repo.  
+*Fix:* Use env vars or a `.env` loaded by your run script; never commit secrets.
 
-**Port already in use**  
-*Symptom:* Port 8000 is allocated  
-*Fix:* Use `-p 8001:8000` or free the port.
+**Repeatable images**  
+*Symptom:* Builds differ across machines.  
+*Fix:* Pin Python base image tag and key pip package versions where possible.
 
-**Large image size**  
-*Symptom:* Image is several GB  
-*Fix:* Use slim base images, `.dockerignore`, and pin packages.
-
-**Permissions in container**  
-*Symptom:* Cannot write logs  
-*Fix:* Ensure directories exist and consider user permissions; create `logs/` in image.
+**Faster builds**  
+*Symptom:* Slow rebuilds after code edits.  
+*Fix:* Copy dependency files earlier in the Dockerfile to leverage layer caching.
 
 
 ## Grading Breakdown
 | Step | Requirement | Points |
 |---|---|---|
-| 1 | Docker installation verified | 5 |
-| 2 | hello-world container runs and is logged | 5 |
-| 3 | FastAPI app created with required endpoints | 15 |
-| 4 | Ansible backup integration working | 15 |
-| 5 | Dockerfile follows best practices | 10 |
-| 6 | Image build completes; output saved | 10 |
-| 7 | Container runs; all endpoints tested via cURL | 20 |
-| 8 | Documentation created (usage + API) | 10 |
-| 9 | Lifecycle ops demonstrated (inspect/stop/start/remove) | 5 |
-| 10 | All required logs and final submission | 5 |
-| **Total** |  | **100** |
+| FastAPI | Existing endpoints retained; new `/backup/ansible` implemented (`WEBHOOKS_OK`) | 10 |
+| Ansible | Inventory + playbook + requirements set up (`ANSIBLE_ASSETS_OK`) | 10 |
+| Dockerfile | Clean, production-minded Dockerfile (`DOCKERFILE_OK`) | 5 |
+| Build | Image builds; transcript saved (`BUILD_OK` + `data/docker_build.txt`) | 10 |
+| Run | Container runs with env + volume; transcript saved (`RUN_OK` + `data/docker_run.txt`) | 5 |
+| Health | Service reachable; non-backup endpoint works (`HEALTH_OK`) | 5 |
+| Backup | Backup endpoint succeeds; files present (`BACKUP_OK`, `BACKUP_FILES_SAVED`) | 15 |
+| Submission | PR open; log hygiene (`LAB8_START`/`LAB8_END` present) | 15 |
+| **Total** |  | **75** |
 
 ## Autograder Notes
-- Log file: `logs/*.log`
-- Required markers: `LAB8_START`, `DOCKER_HELLO_OK`, `FASTAPI_APP_CREATED`, `ANSIBLE_INTEGRATION_OK`, `DOCKERFILE_CREATED`, `IMAGE_BUILD_OK`, `CONTAINER_RUN_OK`, `API_TEST_OK`, `DOCUMENTATION_CREATED`, `VERSION_TAGGED`, `CONTAINER_LIFECYCLE_OK`, `LAB8_END`
+- Log file: `logs/lab8.log`
+- Required markers: `LAB8_START`, `[STEP 2] Dev Container Started`, `WEBHOOKS_OK`, `ANSIBLE_ASSETS_OK`, `DOCKERFILE_OK`, `BUILD_OK`, `RUN_OK`, `HEALTH_OK`, `BACKUP_OK`, `BACKUP_FILES_SAVED`, `LAB8_END`
 
 ## Submission Checklist
-- [ ] hello-world runs and is logged.
-- [ ] FastAPI app exposes /, /ascii/{text}, /joke, /card, and /backup.
-- [ ] Dockerfile builds image without errors; build logs saved.
-- [ ] Container runs on port 8000; endpoint responses saved under `data/api_responses/`.
-- [ ] Ansible backup endpoint functions; inventory/playbook present.
-- [ ] Docs created under `docs/`.
-- [ ] All required markers present in `logs/lab8_docker.log`.
+- [ ] `Dockerfile` builds `sdn-fastapi-backup:lab8` successfully.
+- [ ] Container runs exposing :8000 with token + device env vars and a `data/` volume.
+- [ ] `/backup/ansible` returns 200 and creates backups under `data/backups/`.
+- [ ] Transcripts saved to `data/docker_build.txt` and `data/docker_run.txt`.
+- [ ] `logs/lab8.log` includes all required markers.
+- [ ] Pull request open to `main` before deadline.

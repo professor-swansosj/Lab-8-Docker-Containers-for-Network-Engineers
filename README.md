@@ -132,4 +132,4 @@ By mastering these commands, you can efficiently manage your Docker containers a
 
 
 ## License
-© 2025 Your Name — Classroom use.
+© 2025 Sheldon Swanson — Classroom use.
